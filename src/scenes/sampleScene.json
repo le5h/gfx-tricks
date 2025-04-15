@@ -5,21 +5,28 @@
     "antialiasing": true,
     "imageProcessing": {
       "contrast": 1.0,
-      "exposure": 0.7,
+      "exposure": 0.5,
       "toneMapping": true,
       "agx": {
         "enabled": true,
-        "slope": 0.88,
-        "toe": 0.55,
-        "shoulder": 0.8,
-        "linearStart": 0.15,
+        "slope": 1.0,
+        "toe": 0.5,
+        "shoulder": 0.5,
+        "linearStart": 0.1,
         "linearLength": 0.6,
-        "linearSlope": 0.85,
-        "exposureBias": -1.0,
+        "linearSlope": 1.0,
+        "exposureBias": 0.0,
+        "whitePoint": 1.0,
+        "maxValueMultiplier": 1.0,
         "contrast": 1.0,
         "saturation": 1.0,
-        "whitePoint": 2.0,
-        "maxValueMultiplier": 0.8
+        "blackPoint": 0.0,
+        "blackTransitionStart": 0.0,
+        "blackTransitionEnd": 0.02,
+        "shadowStart": 0.0,
+        "shadowEnd": 0.3,
+        "shadowContrastFactor": 1.0,
+        "shadowSaturationFactor": 1.0
       }
     },
     "shadows": {
@@ -27,6 +34,16 @@
     },
     "environment": {
       "skybox": "https://playground.babylonjs.com/textures/TropicalSunnyDay"
+    },
+    "materials": {
+      "usePhysicalLights": true,
+      "useSpecularOverAlpha": true,
+      "useLogarithmicDepth": true,
+      "specularEnvironment": {
+        "enabled": true,
+        "texture": "https://playground.babylonjs.com/textures/TropicalSunnyDay",
+        "coordinatesMode": "SKYBOX_MODE"
+      }
     }
   },
   "postProcesses": [
@@ -59,7 +76,10 @@
       "type": "hemispheric",
       "name": "hemiLight",
       "direction": [0, 1, 0],
-      "intensity": 0.2
+      "intensity": 0.8,
+      "diffuse": [0.6, 0.6, 0.7],
+      "groundColor": [0.01, 0.01, 0.01],
+      "specular": [0.1, 0.1, 0.15]
     },
     {
       "type": "directional",
@@ -80,20 +100,29 @@
     {
       "name": "redMaterial",
       "diffuseColor": [1, 0, 0],
-      "specularColor": [0.5, 0.5, 0.5],
-      "specularPower": 64
+      "specularColor": [0.6, 0.6, 0.6],
+      "specularPower": 128,
+      "usePhysicalLights": true,
+      "useSpecularOverAlpha": true,
+      "useLogarithmicDepth": true
     },
     {
       "name": "blueMaterial",
       "diffuseColor": [0, 0, 1],
-      "specularColor": [0.5, 0.5, 0.5],
-      "specularPower": 64
+      "specularColor": [0.6, 0.6, 0.6],
+      "specularPower": 128,
+      "usePhysicalLights": true,
+      "useSpecularOverAlpha": true,
+      "useLogarithmicDepth": true
     },
     {
       "name": "groundMaterial",
       "diffuseColor": [0.2, 0.2, 0.2],
       "specularColor": [0.3, 0.3, 0.3],
-      "specularPower": 32
+      "specularPower": 64,
+      "usePhysicalLights": true,
+      "useSpecularOverAlpha": true,
+      "useLogarithmicDepth": true
     }
   ],
   "meshes": [

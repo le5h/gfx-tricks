@@ -8,29 +8,38 @@ export const createAgXTonemap = (scene, config = {}, pipeline) => {
         return;
     }
 
-    if (!scene.activeCamera.postProcesses) {
-        scene.activeCamera.postProcesses = [];
-    }
-
-    // Simplified AgX parameters
+    // Core AgX parameters - all configurable through JSON
     const agxParams = {
-        slope: config.slope ?? 0.91,
-        toe: config.toe ?? 0.53,
-        shoulder: config.shoulder ?? 0.95,
-        linearStart: config.linearStart ?? 0.1,
-        linearLength: config.linearLength ?? 0.7,
-        linearSlope: config.linearSlope ?? 0.91,
-        exposureBias: config.exposureBias ?? 0.0,
-        contrast: config.contrast ?? 1.0,
-        saturation: config.saturation ?? 1.0,
-        whitePoint: config.whitePoint ?? 2.0,
-        maxValueMultiplier: config.maxValueMultiplier ?? 0.8,
-        noiseScale: config.noiseScale ?? 0.15,
-        noiseSpeed: config.noiseSpeed ?? 0.5,
-        noiseEnabled: config.noiseEnabled ?? true
+        // Core curve parameters
+        slope: config.slope ?? 1.0,          // Neutral slope (1.0 = linear response)
+        toe: config.toe ?? 0.5,              // Middle toe value
+        shoulder: config.shoulder ?? 0.5,     // Middle shoulder value
+        linearStart: config.linearStart ?? 0.1,  // Start linear section early
+        linearLength: config.linearLength ?? 0.6, // Longer linear section
+        linearSlope: config.linearSlope ?? 1.0,   // Neutral linear slope
+        
+        // Exposure and dynamic range
+        exposureBias: config.exposureBias ?? 0.0,  // No exposure bias
+        whitePoint: config.whitePoint ?? 1.0,      // Neutral white point
+        maxValueMultiplier: config.maxValueMultiplier ?? 1.0,  // No additional multiplier
+        
+        // Color adjustments
+        contrast: config.contrast ?? 1.0,     // Neutral contrast
+        saturation: config.saturation ?? 1.0, // Neutral saturation
+        
+        // Black point handling
+        blackPoint: config.blackPoint ?? 0.0,     // True black
+        blackTransitionStart: config.blackTransitionStart ?? 0.0,  // Start at black
+        blackTransitionEnd: config.blackTransitionEnd ?? 0.02,     // Gentle transition
+        
+        // Shadow preservation
+        shadowStart: config.shadowStart ?? 0.0,    // Start at black
+        shadowEnd: config.shadowEnd ?? 0.3,        // Wider shadow range
+        shadowContrastFactor: config.shadowContrastFactor ?? 1.0,  // No contrast adjustment
+        shadowSaturationFactor: config.shadowSaturationFactor ?? 1.0  // No saturation adjustment
     };
 
-    // Disable default tonemapping on the environment
+    // Disable default tonemapping
     if (scene.environmentTexture) {
         scene.environmentTexture.gammaSpace = false;
     }
@@ -48,171 +57,147 @@ export const createAgXTonemap = (scene, config = {}, pipeline) => {
 
     BABYLON.Effect.ShadersStore[shaderName + "PixelShader"] = `
         precision highp float;
+        
+        // Varyings
         varying vec2 vUV;
+        
+        // Uniforms
         uniform sampler2D textureSampler;
         uniform float exposure;
         uniform float contrast;
         uniform float saturation;
-        uniform float time;
+        uniform float whitePoint;
+        uniform float maxValueMultiplier;
 
+        // Constants from JSON config
         const float SLOPE = ${agxParams.slope.toFixed(6)};
         const float TOE = ${agxParams.toe.toFixed(6)};
         const float SHOULDER = ${agxParams.shoulder.toFixed(6)};
         const vec2 LINEAR_SECTION = vec2(${agxParams.linearStart.toFixed(6)}, ${agxParams.linearLength.toFixed(6)});
         const float LINEAR_SLOPE = ${agxParams.linearSlope.toFixed(6)};
         const float EXPOSURE_BIAS = ${agxParams.exposureBias.toFixed(6)};
-        const float NOISE_SCALE = ${agxParams.noiseScale.toFixed(6)};
-        const float NOISE_SPEED = ${agxParams.noiseSpeed.toFixed(6)};
+        const float BLACK_POINT = ${agxParams.blackPoint.toFixed(6)};
+        const float BLACK_TRANSITION_START = ${agxParams.blackTransitionStart.toFixed(6)};
+        const float BLACK_TRANSITION_END = ${agxParams.blackTransitionEnd.toFixed(6)};
+        const float SHADOW_START = ${agxParams.shadowStart.toFixed(6)};
+        const float SHADOW_END = ${agxParams.shadowEnd.toFixed(6)};
+        const float SHADOW_CONTRAST = ${agxParams.shadowContrastFactor.toFixed(6)};
+        const float SHADOW_SATURATION = ${agxParams.shadowSaturationFactor.toFixed(6)};
 
-        // White point adjustment
-        const float WHITE_POINT = ${agxParams.whitePoint.toFixed(6)};
-
-        // Simple noise function
-        float noise(vec2 p) {
-            return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
-        }
-
-        // Basic sRGB conversion
+        // Color space conversion
         vec3 sRGBToLinear(vec3 color) {
-            return pow(color, vec3(2.2));
+            return pow(max(color, vec3(0.0)), vec3(2.2));
         }
 
         vec3 linearToSRGB(vec3 color) {
-            return pow(color, vec3(1.0 / 2.2));
+            return pow(max(color, vec3(0.0)), vec3(1.0 / 2.2));
         }
 
-        // Simple but accurate luminance calculation
+        // Luminance calculation (Rec. 709)
         float getLuminance(vec3 color) {
             return dot(color, vec3(0.2126, 0.7152, 0.0722));
         }
 
-        // Smooth shading helper
+        // Smooth curve helper
         float smoothCurve(float x) {
             return x * x * (3.0 - 2.0 * x);
         }
 
-        vec3 AgXTonemap(vec3 color) {
-            // Calculate brightness once
-            float brightness = getLuminance(color);
-            
-            // Pre-calculate masks
-            float darkMask = 1.0 - smoothstep(0.0, 0.3, brightness);
-            float brightMask = smoothstep(0.7, 1.0, brightness);
-            float midMask = 1.0 - darkMask - brightMask;
-            
-            // Apply noise if enabled
-            if (${agxParams.noiseEnabled ? 'true' : 'false'}) {
-                // Generate noise coordinates once
-                vec2 noiseCoord = vUV * vec2(3840.0, 2160.0);
-                float timeFactor = time * NOISE_SPEED;
-                
-                // Generate noise for each channel with pre-calculated time offsets
-                vec3 channelNoise = vec3(
-                    noise(noiseCoord + vec2(1.0, 0.0) + timeFactor),
-                    noise(noiseCoord + vec2(0.0, 1.0) + timeFactor * 1.2),
-                    noise(noiseCoord + vec2(1.0, 1.0) + timeFactor * 1.4)
-                );
-                
-                // Normalize and scale noise
-                channelNoise = (channelNoise * 2.0 - 1.0) * (NOISE_SCALE / 255.0);
-                
-                // Pre-calculate noise scales based on brightness
-                float noiseScale = (mix(1.2, 0.0, smoothstep(0.0, 0.3, brightness)) +  // dark
-                                  mix(0.0, 1.2, smoothstep(0.7, 1.0, brightness)) +     // bright
-                                  mix(0.8, 0.8, smoothstep(0.3, 0.7, brightness))) / 3.0; // mid
-                
-                // Apply noise with pre-calculated masks
-                color += channelNoise * noiseScale * (darkMask + midMask * 0.5);
-                color -= channelNoise * noiseScale * (brightMask + midMask * 0.5);
-            }
-            
-            // Apply exposure and white point
-            color *= pow(2.0, EXPOSURE_BIAS) * exposure * WHITE_POINT;
-            
-            // Process each channel while preserving relationships
-            vec3 agxColor;
+        // AgX tonemapping curve
+        vec3 AgXToneMap(vec3 color) {
+            vec3 result;
             for(int i = 0; i < 3; i++) {
                 float x = max(0.0, color[i]);
+                float y;
                 
                 if(x < LINEAR_SECTION[0]) {
-                    float t = smoothCurve(x / LINEAR_SECTION[0]);
-                    agxColor[i] = TOE * pow(t, SLOPE);
+                    float t = x / LINEAR_SECTION[0];
+                    y = t * TOE;
                 }
-                else if(x <= LINEAR_SECTION[1]) {
-                    float t = smoothCurve((x - LINEAR_SECTION[0]) / (LINEAR_SECTION[1] - LINEAR_SECTION[0]));
-                    float linearValue = LINEAR_SLOPE * (x - LINEAR_SECTION[0]) + TOE;
-                    float toeValue = TOE * pow(1.0, SLOPE);
-                    agxColor[i] = mix(toeValue, linearValue, t);
+                else if(x < LINEAR_SECTION[0] + LINEAR_SECTION[1]) {
+                    float t = (x - LINEAR_SECTION[0]) / LINEAR_SECTION[1];
+                    y = mix(TOE, 1.0, t * LINEAR_SLOPE);
                 }
                 else {
-                    float t = smoothCurve(clamp((x - LINEAR_SECTION[1]) / (4.0 - LINEAR_SECTION[1]), 0.0, 1.0));
-                    float shoulderValue = 1.0 - pow(1.0 - t, 1.0 + SHOULDER * 0.5);
-                    float maxValue = 1.0 + (t * ${agxParams.maxValueMultiplier.toFixed(6)});
-                    
-                    agxColor[i] = mix(
-                        TOE + LINEAR_SLOPE * (LINEAR_SECTION[1] - LINEAR_SECTION[0]),
-                        maxValue,
-                        shoulderValue
-                    );
+                    float t = (x - (LINEAR_SECTION[0] + LINEAR_SECTION[1])) / (2.0 - (LINEAR_SECTION[0] + LINEAR_SECTION[1]));
+                    t = clamp(t, 0.0, 1.0);
+                    y = mix(TOE + LINEAR_SLOPE * LINEAR_SECTION[1],
+                         1.0 + (maxValueMultiplier - 1.0) * SHOULDER,
+                         smoothCurve(t));
                 }
+                
+                result[i] = y;
             }
-            
-            // Apply contrast while preserving relationships
-            vec3 contrastedColor = pow(max(agxColor, vec3(0.0001)), vec3(contrast));
-            float contrastLum = getLuminance(contrastedColor);
-            float originalLum = getLuminance(agxColor);
-            agxColor = contrastedColor * (originalLum / max(contrastLum, 0.0001));
-            
-            // Modified highlight desaturation to preserve bright whites
-            float lum = getLuminance(agxColor);
-            float desaturationAmount = smoothstep(0.8, 0.98, lum);
-            vec3 satColor = mix(vec3(lum), agxColor, saturation);
-            agxColor = mix(satColor, agxColor, desaturationAmount);
-            
-            return clamp(agxColor, 0.0, 1.0);
+            return result;
         }
 
-        void main(void) {
-            vec4 color = texture(textureSampler, vUV);
-            color.rgb = sRGBToLinear(color.rgb);
-            color.rgb = AgXTonemap(color.rgb);
-            color.rgb = linearToSRGB(color.rgb);
-            gl_FragColor = color;
+        // Main tonemapping function
+        vec3 tonemap(vec3 color) {
+            // Convert to linear space
+            color = sRGBToLinear(color);
+            
+            // Calculate luminance and shadow mask with configurable transitions
+            float lum = getLuminance(color);
+            float shadowMask = 1.0 - smoothstep(SHADOW_START, SHADOW_END, lum);
+            
+            // Smooth black point transition using config values
+            float blackLevel = smoothstep(BLACK_TRANSITION_START, BLACK_TRANSITION_END, lum);
+            
+            // Apply exposure with smooth black handling
+            float exposureAdjust = exp2(exposure + EXPOSURE_BIAS);
+            color *= exposureAdjust * mix(0.8, 1.0, blackLevel);
+            
+            // Apply AgX tonemapping
+            vec3 tonemapped = AgXToneMap(color);
+            
+            // Apply white point with configurable shadow preservation
+            float maxValue = max(max(tonemapped.r, tonemapped.g), tonemapped.b);
+            if (maxValue > 0.0) {
+                float wp = whitePoint * mix(SHADOW_CONTRAST, 1.0, smoothstep(0.0, 0.5, maxValue));
+                tonemapped *= wp / maxValue;
+            }
+            
+            // Apply contrast with configurable shadow preservation
+            float adjustedContrast = contrast * mix(SHADOW_CONTRAST, 1.0, smoothstep(0.0, 0.2, getLuminance(tonemapped)));
+            vec3 mean = vec3(0.18);
+            tonemapped = mix(mean, tonemapped, adjustedContrast);
+            
+            // Apply saturation with configurable shadow preservation
+            float adjustedSaturation = saturation * mix(SHADOW_SATURATION, 1.0, smoothstep(0.0, 0.08, getLuminance(tonemapped)));
+            float luminance = getLuminance(tonemapped);
+            tonemapped = mix(vec3(luminance), tonemapped, adjustedSaturation);
+            
+            // Final black point preservation with configurable transition
+            vec3 result = linearToSRGB(max(tonemapped, 0.0));
+            return mix(vec3(0.0), result, smoothstep(BLACK_TRANSITION_START, BLACK_TRANSITION_END, lum));
+        }
+
+        void main() {
+            vec4 color = texture2D(textureSampler, vUV);
+            gl_FragColor = vec4(tonemap(color.rgb), color.a);
         }`;
 
     const postProcess = new BABYLON.PostProcess(
         "AgX",
         shaderName,
-        ["exposure", "scale", "contrast", "saturation", "time"],
-        null,
+        ["exposure", "contrast", "saturation", "whitePoint", "maxValueMultiplier"],
+        ["textureSampler"],
         1.0,
         scene.activeCamera,
-        BABYLON.Texture.BILINEAR_SAMPLINGMODE
+        BABYLON.Texture.BILINEAR_SAMPLINGMODE,
+        scene.getEngine(),
+        false,
+        "#define WEBGL2"
     );
 
-    scene.activeCamera.postProcesses.push(postProcess);
-
-    // Move FXAA to the end if it exists
-    if (pipeline.fxaaEnabled && scene.activeCamera.postProcesses.length > 1) {
-        const processes = scene.activeCamera.postProcesses;
-        for (let i = 0; i < processes.length; i++) {
-            if (processes[i] instanceof BABYLON.FxaaPostProcess) {
-                const fxaa = processes.splice(i, 1)[0];
-                processes.push(fxaa);
-                break;
-            }
-        }
-    }
-
-    // Update time in the shader
-    let startTime = Date.now();
+    // Update shader parameters
     postProcess.onApply = (effect) => {
         effect.setFloat("exposure", pipeline.imageProcessing.exposure);
-        effect.setFloat2("scale", 1.0, 1.0);
         effect.setFloat("contrast", agxParams.contrast);
         effect.setFloat("saturation", agxParams.saturation);
-        effect.setFloat("time", (Date.now() - startTime) / 1000.0);
+        effect.setFloat("whitePoint", agxParams.whitePoint);
+        effect.setFloat("maxValueMultiplier", agxParams.maxValueMultiplier);
     };
 
     return postProcess;
-}; 
+};

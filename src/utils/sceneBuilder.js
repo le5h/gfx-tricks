@@ -16,9 +16,11 @@ export class SceneBuilder {
     this.engine = engine;
     this.canvas = canvas;
     this.runningTime = 0;
+    this.sceneConfig = null;
   }
 
   buildFromConfig(config) {
+    this.sceneConfig = config;
     const scene = new BABYLON.Scene(this.engine);
     scene.clearColor = new BABYLON.Color4(...config.clearColor || [0, 0, 0, 1]);
 
@@ -207,9 +209,25 @@ export class SceneBuilder {
       case 'hemispheric':
         light = new BABYLON.HemisphericLight(
           config.name,
-          new BABYLON.Vector3(...config.direction || [0, 1, 0]),
+          new BABYLON.Vector3(...config.direction),
           scene
         );
+        light.intensity = config.intensity || 1.0;
+        
+        // Set HDR-ready colors with proper gamma correction
+        if (config.diffuse) {
+          light.diffuse = new BABYLON.Color3(...config.diffuse);
+        }
+        if (config.groundColor) {
+          light.groundColor = new BABYLON.Color3(...config.groundColor);
+        }
+        if (config.specular) {
+          light.specular = new BABYLON.Color3(...config.specular);
+        }
+
+        // Enable smooth gradient transitions
+        light.usePhysicalLights = true;
+        light.range = 1000; // Large range for smooth falloff
         break;
 
       case 'point':
@@ -233,11 +251,6 @@ export class SceneBuilder {
 
       default:
         throw new Error(`Unsupported light type: ${config.type}`);
-    }
-
-    // Set light intensity
-    if (config.intensity !== undefined) {
-      light.intensity = config.intensity;
     }
 
     // Configure shadows if enabled
@@ -374,20 +387,40 @@ export class SceneBuilder {
   createMaterial(scene, config) {
     const material = new BABYLON.StandardMaterial(config.name, scene);
     
+    // Set diffuse color with HDR support
     if (config.diffuseColor) {
       material.diffuseColor = new BABYLON.Color3(...config.diffuseColor);
     }
     
+    // Set specular color with HDR support
     if (config.specularColor) {
       material.specularColor = new BABYLON.Color3(...config.specularColor);
     }
     
-    if (config.emissiveColor) {
-      material.emissiveColor = new BABYLON.Color3(...config.emissiveColor);
+    // Set specular power for smoother highlights
+    if (config.specularPower) {
+      material.specularPower = config.specularPower;
     }
+
+    // Apply material settings from scene configuration
+    const materialConfig = this.sceneConfig.rendering?.materials || {};
     
-    if (config.alpha !== undefined) {
-      material.alpha = config.alpha;
+    // Enable physical lights if configured
+    material.usePhysicalLights = config.usePhysicalLights ?? materialConfig.usePhysicalLights ?? true;
+    
+    // Enable specular anti-aliasing if configured
+    material.useSpecularOverAlpha = config.useSpecularOverAlpha ?? materialConfig.useSpecularOverAlpha ?? true;
+    material.useLogarithmicDepth = config.useLogarithmicDepth ?? materialConfig.useLogarithmicDepth ?? true;
+
+    // Configure specular environment if enabled
+    if (materialConfig.specularEnvironment?.enabled) {
+      material.useSpecularOverAlpha = true;
+      material.specularEnvironmentTexture = new BABYLON.CubeTexture(
+        materialConfig.specularEnvironment.texture,
+        scene
+      );
+      material.specularEnvironmentTexture.coordinatesMode = 
+        BABYLON.Texture[materialConfig.specularEnvironment.coordinatesMode];
     }
 
     return material;
