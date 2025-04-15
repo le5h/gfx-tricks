@@ -14,6 +14,7 @@ export class SceneBuilder {
   constructor(engine, canvas) {
     this.engine = engine;
     this.canvas = canvas;
+    this.runningTime = 0;
   }
 
   buildFromConfig(config) {
@@ -416,7 +417,10 @@ export class SceneBuilder {
       contrast: config.contrast ?? 1.0,
       saturation: config.saturation ?? 1.0,
       whitePoint: config.whitePoint ?? 2.0,
-      maxValueMultiplier: config.maxValueMultiplier ?? 0.8
+      maxValueMultiplier: config.maxValueMultiplier ?? 0.8,
+      noiseScale: config.noiseScale ?? 0.15,
+      noiseSpeed: config.noiseSpeed ?? 0.5,
+      noiseEnabled: config.noiseEnabled ?? true
     };
 
     // Disable default tonemapping on the environment
@@ -442,6 +446,7 @@ export class SceneBuilder {
       uniform float exposure;
       uniform float contrast;
       uniform float saturation;
+      uniform float time;
 
       const float SLOPE = ${agxParams.slope.toFixed(6)};
       const float TOE = ${agxParams.toe.toFixed(6)};
@@ -449,9 +454,16 @@ export class SceneBuilder {
       const vec2 LINEAR_SECTION = vec2(${agxParams.linearStart.toFixed(6)}, ${agxParams.linearLength.toFixed(6)});
       const float LINEAR_SLOPE = ${agxParams.linearSlope.toFixed(6)};
       const float EXPOSURE_BIAS = ${agxParams.exposureBias.toFixed(6)};
+      const float NOISE_SCALE = ${agxParams.noiseScale.toFixed(6)};
+      const float NOISE_SPEED = ${agxParams.noiseSpeed.toFixed(6)};
 
       // White point adjustment
       const float WHITE_POINT = ${agxParams.whitePoint.toFixed(6)};
+
+      // Simple noise function
+      float noise(vec2 p) {
+          return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+      }
 
       // Basic sRGB conversion
       vec3 sRGBToLinear(vec3 color) {
@@ -473,7 +485,41 @@ export class SceneBuilder {
       }
 
       vec3 AgXTonemap(vec3 color) {
-          // Apply exposure with white point adjustment
+          // Calculate brightness once
+          float brightness = getLuminance(color);
+          
+          // Pre-calculate masks
+          float darkMask = 1.0 - smoothstep(0.0, 0.3, brightness);
+          float brightMask = smoothstep(0.7, 1.0, brightness);
+          float midMask = 1.0 - darkMask - brightMask;
+          
+          // Apply noise if enabled
+          if (${agxParams.noiseEnabled ? 'true' : 'false'}) {
+              // Generate noise coordinates once
+              vec2 noiseCoord = vUV * vec2(3840.0, 2160.0);
+              float timeFactor = time * NOISE_SPEED;
+              
+              // Generate noise for each channel with pre-calculated time offsets
+              vec3 channelNoise = vec3(
+                  noise(noiseCoord + vec2(1.0, 0.0) + timeFactor),
+                  noise(noiseCoord + vec2(0.0, 1.0) + timeFactor * 1.2),
+                  noise(noiseCoord + vec2(1.0, 1.0) + timeFactor * 1.4)
+              );
+              
+              // Normalize and scale noise
+              channelNoise = (channelNoise * 2.0 - 1.0) * (NOISE_SCALE / 255.0);
+              
+              // Pre-calculate noise scales based on brightness
+              float noiseScale = (mix(1.2, 0.0, smoothstep(0.0, 0.3, brightness)) +  // dark
+                                mix(0.0, 1.2, smoothstep(0.7, 1.0, brightness)) +     // bright
+                                mix(0.8, 0.8, smoothstep(0.3, 0.7, brightness))) / 3.0; // mid
+              
+              // Apply noise with pre-calculated masks
+              color += channelNoise * noiseScale * (darkMask + midMask * 0.5);
+              color -= channelNoise * noiseScale * (brightMask + midMask * 0.5);
+          }
+          
+          // Apply exposure and white point
           color *= pow(2.0, EXPOSURE_BIAS) * exposure * WHITE_POINT;
           
           // Process each channel while preserving relationships
@@ -482,27 +528,18 @@ export class SceneBuilder {
               float x = max(0.0, color[i]);
               
               if(x < LINEAR_SECTION[0]) {
-                  float t = x / LINEAR_SECTION[0];
-                  t = smoothCurve(t);
+                  float t = smoothCurve(x / LINEAR_SECTION[0]);
                   agxColor[i] = TOE * pow(t, SLOPE);
               }
               else if(x <= LINEAR_SECTION[1]) {
-                  float t = (x - LINEAR_SECTION[0]) / (LINEAR_SECTION[1] - LINEAR_SECTION[0]);
-                  t = smoothCurve(t);
+                  float t = smoothCurve((x - LINEAR_SECTION[0]) / (LINEAR_SECTION[1] - LINEAR_SECTION[0]));
                   float linearValue = LINEAR_SLOPE * (x - LINEAR_SECTION[0]) + TOE;
                   float toeValue = TOE * pow(1.0, SLOPE);
                   agxColor[i] = mix(toeValue, linearValue, t);
               }
               else {
-                  // Adjusted shoulder for better highlight handling
-                  float t = (x - LINEAR_SECTION[1]) / (4.0 - LINEAR_SECTION[1]); // Extended range
-                  t = clamp(t, 0.0, 1.0);
-                  t = smoothCurve(t);
-                  
-                  // Modified shoulder curve for brighter whites
+                  float t = smoothCurve(clamp((x - LINEAR_SECTION[1]) / (4.0 - LINEAR_SECTION[1]), 0.0, 1.0));
                   float shoulderValue = 1.0 - pow(1.0 - t, 1.0 + SHOULDER * 0.5);
-                  
-                  // Ensure highlights can reach full white
                   float maxValue = 1.0 + (t * ${agxParams.maxValueMultiplier.toFixed(6)});
                   
                   agxColor[i] = mix(
@@ -521,9 +558,9 @@ export class SceneBuilder {
           
           // Modified highlight desaturation to preserve bright whites
           float lum = getLuminance(agxColor);
+          float desaturationAmount = smoothstep(0.8, 0.98, lum);
           vec3 satColor = mix(vec3(lum), agxColor, saturation);
-          float desaturationAmount = smoothstep(0.8, 0.98, lum); // Adjusted threshold
-          agxColor = mix(satColor, agxColor, desaturationAmount); // Preserve original color more in highlights
+          agxColor = mix(satColor, agxColor, desaturationAmount);
           
           return clamp(agxColor, 0.0, 1.0);
       }
@@ -539,7 +576,7 @@ export class SceneBuilder {
     const postProcess = new BABYLON.PostProcess(
       "AgX",
       shaderName,
-      ["exposure", "scale", "contrast", "saturation"],
+      ["exposure", "scale", "contrast", "saturation", "time"],
       null,
       1.0,
       scene.activeCamera,
@@ -560,11 +597,14 @@ export class SceneBuilder {
       }
     }
 
+    // Update time in the shader
+    let startTime = Date.now();
     postProcess.onApply = (effect) => {
       effect.setFloat("exposure", pipeline.imageProcessing.exposure);
       effect.setFloat2("scale", 1.0, 1.0);
       effect.setFloat("contrast", agxParams.contrast);
       effect.setFloat("saturation", agxParams.saturation);
+      effect.setFloat("time", (Date.now() - startTime) / 1000.0);
     };
 
     return postProcess;
