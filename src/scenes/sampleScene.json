@@ -6,7 +6,7 @@
     "imageProcessing": {
       "contrast": 1.0,
       "exposure": 1.0,
-      "toneMapping": true,
+      "toneMapping": false,
       "agx": {
         "enabled": true,
         "slope": 2.2,
@@ -16,7 +16,10 @@
       }
     },
     "shadows": {
-      "enabled": true
+      "enabled": true,
+      "bias": 0.0001,
+      "normalBias": 0.0,
+      "filter": "pcf"
     },
     "materials": {
       "usePhysicalLights": true,
@@ -27,17 +30,20 @@
   "postProcesses": [
     {
       "type": "bloom",
+      "enabled": false,
       "size": 10,
       "intensity": 0.7,
       "threshold": 0.4
     },
     {
       "type": "glow",
+      "enabled": false,
       "mainTextureFixedSize": 1024,
       "blurKernelSize": 32
     },
     {
       "type": "ssao",
+      "enabled": true,
       "ratio": 1.0
     }
   ],
@@ -55,7 +61,7 @@
       "type": "hemispheric",
       "name": "envLight",
       "direction": [0, 1, 0],
-      "intensity": 0.1,
+      "intensity": 0.3,
       "diffuse": [0.8, 0.8, 0.9],
       "groundColor": [0.1, 0.1, 0.2],
       "specular": [0.2, 0.2, 0.3],
@@ -65,16 +71,19 @@
       "type": "point",
       "name": "ceilingLight",
       "position": [0, 6, 0],
-      "intensity": 1.0,
+      "intensity": 1.5,
       "diffuse": [1.0, 1.0, 1.0],
       "specular": [1.0, 1.0, 1.0],
       "range": 15,
       "shadows": {
         "enabled": true,
         "quality": "high",
-        "mapSize": 2048
+        "mapSize": 2048,
+        "bias": 0.0001,
+        "normalBias": 0.0,
+        "filter": "pcf"
       },
-      "comment": "Main light source positioned near the ceiling"
+      "comment": "Main light source positioned above the ceiling"
     }
   ],
   "materials": [

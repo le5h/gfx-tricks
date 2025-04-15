@@ -71,12 +71,17 @@ export class SceneBuilder {
     const engine = scene.getEngine();
     engine.setHardwareScalingLevel(1.0);
 
-    // Create default pipeline first
+    // Create default pipeline with HDR texture format
     const pipeline = new BABYLON.DefaultRenderingPipeline(
       "defaultPipeline",
-      true,
+      true, // HDR
       scene,
-      [scene.activeCamera]
+      [scene.activeCamera],
+      undefined,
+      undefined,
+      engine.getRenderingCanvasClientRect().width,
+      engine.getRenderingCanvasClientRect().height,
+      BABYLON.Constants.TEXTURETYPE_HALF_FLOAT // Use 16-bit float for HDR
     );
 
     // Configure HDR and tonemapping
@@ -90,6 +95,11 @@ export class SceneBuilder {
     // Configure tonemapping based on settings
     scene.imageProcessingConfiguration.toneMappingEnabled = toneMappingEnabled && !useAgX;
     pipeline.imageProcessing.toneMappingEnabled = toneMappingEnabled && !useAgX;
+    
+    // Force HDR pipeline
+    scene.imageProcessingConfiguration.forceFullscreenViewport = true;
+    pipeline.imageProcessingEnabled = true;
+    pipeline.forceFullscreenViewport = true;
 
     if (toneMappingEnabled && !useAgX) {
       // Use Babylon's built-in ACES tone mapping when AgX is disabled
@@ -107,6 +117,11 @@ export class SceneBuilder {
     if (config.antialiasing) {
       pipeline.fxaaEnabled = true;
       pipeline.samples = 1; // Use FXAA instead of MSAA
+      // Configure FXAA with high quality settings
+      pipeline.fxaa = {
+        samples: 4,
+        adaptScaleToCurrentSize: true
+      };
     }
 
     // Create AgX tonemapping if enabled
@@ -141,6 +156,7 @@ export class SceneBuilder {
       return;
     }
 
+    // Create default pipeline first
     const pipeline = new BABYLON.DefaultRenderingPipeline(
       "defaultPipeline",
       true,
@@ -148,7 +164,39 @@ export class SceneBuilder {
       [scene.activeCamera]
     );
 
+    // Create SSAO if enabled
+    const ssaoConfig = configs.find(c => c.type === 'ssao' && c.enabled);
+    if (ssaoConfig) {
+      // Initialize SSAO2 pipeline
+      const ssao = new BABYLON.SSAO2RenderingPipeline(
+        "ssao",
+        scene,
+        {
+          ssaoRatio: 0.5, // Performance
+          blurRatio: 1 // Quality
+        }
+      );
+
+      // Configure SSAO parameters
+      ssao.radius = 2;
+      ssao.totalStrength = 1.0;
+      ssao.expensiveBlur = true;
+      ssao.samples = 32;
+      ssao.maxZ = 100;
+
+      // Attach to scene cameras
+      scene.postProcessRenderPipelineManager.attachCamerasToRenderPipeline(
+        "ssao",
+        scene.activeCamera,
+        true // Force attach
+      );
+    }
+
     configs.forEach(config => {
+      if (!config.enabled || config.type === 'ssao') {
+        return; // Skip disabled effects and SSAO (handled above)
+      }
+
       switch (config.type) {
         case 'bloom':
           pipeline.bloomEnabled = true;
@@ -163,12 +211,6 @@ export class SceneBuilder {
           pipeline.glowLayer.blurKernelSize = config.blurKernelSize || 32;
           break;
 
-        case 'ssao':
-          pipeline.ssaoEnabled = true;
-          pipeline.ssaoRatio = config.ratio || 0.5;
-          pipeline.ssaoBlurScale = config.blurScale || 1.0;
-          break;
-
         default:
           throw new Error(`Unsupported post-process type: ${config.type}`);
       }
@@ -176,9 +218,10 @@ export class SceneBuilder {
   }
 
   createCamera(scene, config) {
+    let camera;
     switch (config.type) {
       case 'arcRotate':
-        const camera = new BABYLON.ArcRotateCamera(
+        camera = new BABYLON.ArcRotateCamera(
           config.name,
           config.alpha || -Math.PI / 2,
           config.beta || Math.PI / 2.5,
@@ -187,20 +230,28 @@ export class SceneBuilder {
           scene
         );
         camera.attachControl(this.canvas, true);
-        return camera;
+        camera.minZ = 0.1;
+        camera.maxZ = 100;
+        break;
 
       case 'free':
-        const freeCamera = new BABYLON.FreeCamera(
+        camera = new BABYLON.UniversalCamera(
           config.name,
           new BABYLON.Vector3(...config.position || [0, 5, -10]),
           scene
         );
-        freeCamera.attachControl(this.canvas, true);
-        return freeCamera;
+        camera.attachControl(this.canvas, true);
+        camera.minZ = 0.1;
+        camera.maxZ = 100;
+        break;
 
       default:
         throw new Error(`Unsupported camera type: ${config.type}`);
     }
+
+    // Store camera in scene for later use
+    scene.activeCamera = camera;
+    return camera;
   }
 
   createLight(scene, config) {
@@ -256,7 +307,7 @@ export class SceneBuilder {
     // Configure shadows if enabled
     if (config.shadows && config.shadows.enabled) {
       const shadowGenerator = new BABYLON.ShadowGenerator(
-        config.shadows.mapSize || 1024,
+        config.shadows.mapSize || 2048, // Increased default resolution
         light
       );
       
@@ -264,54 +315,51 @@ export class SceneBuilder {
       if (config.shadows.quality) {
         const qualityMap = {
           'low': {
-            useBlurExponentialShadowMap: false,
-            useKernelBlur: false,
-            blurKernel: 1
-          },
-          'medium': {
             useBlurExponentialShadowMap: true,
             useKernelBlur: true,
             blurKernel: 8
           },
-          'high': {
+          'medium': {
             useBlurExponentialShadowMap: true,
             useKernelBlur: true,
             blurKernel: 16
+          },
+          'high': {
+            useBlurExponentialShadowMap: true,
+            useKernelBlur: true,
+            blurKernel: 32,
+            usePercentageCloserFiltering: true,
+            filteringQuality: BABYLON.ShadowGenerator.QUALITY_HIGH
           }
         };
 
-        const quality = qualityMap[config.shadows.quality] || qualityMap.medium;
+        const quality = qualityMap[config.shadows.quality] || qualityMap.high;
+        
+        // Apply quality settings
         shadowGenerator.useBlurExponentialShadowMap = quality.useBlurExponentialShadowMap;
         shadowGenerator.useKernelBlur = quality.useKernelBlur;
         shadowGenerator.blurKernel = quality.blurKernel;
+        
+        if (quality.usePercentageCloserFiltering) {
+          shadowGenerator.usePercentageCloserFiltering = true;
+          shadowGenerator.filteringQuality = quality.filteringQuality;
+        }
       }
 
-      // Configure shadow bias
-      if (config.shadows.bias !== undefined) {
-        shadowGenerator.bias = config.shadows.bias;
-      }
-      if (config.shadows.normalBias !== undefined) {
-        shadowGenerator.normalBias = config.shadows.normalBias;
-      }
-
-      // Set up shadow frustum for directional lights
-      if (light instanceof BABYLON.DirectionalLight) {
-        // Use PCF shadows for better quality
-        shadowGenerator.usePercentageCloserFiltering = true;
-        shadowGenerator.filteringQuality = BABYLON.ShadowGenerator.QUALITY_HIGH;
-        
-        // Disable poisson sampling as PCF gives better results
-        shadowGenerator.usePoissonSampling = false;
-        shadowGenerator.useExponentialShadowMap = false;
-        
-        // Configure shadow frustum
-        const shadowFrustumSize = 20;
-        light.shadowOrthoScale = 0.7;
-        light.shadowMinZ = 1;
-        light.shadowMaxZ = 30;
-        
-        // Enable contact hardening for more realistic shadows
-        shadowGenerator.contactHardeningLightSizeUVRatio = 0.05;
+      // Configure shadow bias and filtering
+      shadowGenerator.bias = 0.00001; // Reduced bias for better contact
+      shadowGenerator.normalBias = 0.0;
+      shadowGenerator.transparencyShadow = true;
+      shadowGenerator.depthScale = 50; // Increased for better precision
+      
+      // Enable contact hardening for more realistic shadows
+      shadowGenerator.contactHardeningLightSizeUVRatio = 0.2;
+      
+      // For point lights, configure specific settings
+      if (light instanceof BABYLON.PointLight) {
+        shadowGenerator.forceBackFacesOnly = true; // Helps with self-shadowing
+        shadowGenerator.darkness = 0.2; // Less dark shadows for point lights
+        shadowGenerator.frustumEdgeFalloff = 0.2; // Smooth shadow edges
       }
 
       // Store shadow generator for mesh configuration
@@ -327,7 +375,10 @@ export class SceneBuilder {
       case 'sphere':
         mesh = BABYLON.MeshBuilder.CreateSphere(
           config.name,
-          { diameter: config.diameter || 2 },
+          { 
+            diameter: config.diameter || 2,
+            segments: 32 // Increase segments for smoother shadows
+          },
           scene
         );
         break;
@@ -377,6 +428,13 @@ export class SceneBuilder {
       const light = scene.lights.find(l => l.shadowGenerator);
       if (light && light.shadowGenerator) {
         if (config.shadows.dropShadow) {
+          // For spheres, adjust shadow bias to prevent self-shadowing
+          if (config.type === 'sphere') {
+            light.shadowGenerator.bias = 0.0005;
+            light.shadowGenerator.normalBias = 0.0;
+            light.shadowGenerator.usePercentageCloserFiltering = true;
+            light.shadowGenerator.filteringQuality = BABYLON.ShadowGenerator.QUALITY_HIGH;
+          }
           light.shadowGenerator.addShadowCaster(mesh, true);
         }
         if (config.shadows.receiveShadows) {
