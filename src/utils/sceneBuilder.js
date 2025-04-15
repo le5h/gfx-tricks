@@ -404,17 +404,19 @@ export class SceneBuilder {
       scene.activeCamera.postProcesses = [];
     }
 
-    // AgX parameters tuned for better shadow detail and highlight handling
+    // Simplified AgX parameters
     const agxParams = {
       slope: config.slope ?? 0.91,
-      toe: config.toe ?? 0.53,         // Reduced toe for better shadow detail
+      toe: config.toe ?? 0.53,
       shoulder: config.shoulder ?? 0.95,
-      linearStart: config.linearStart ?? 0.1,  // Lower start for more shadow detail
-      linearLength: config.linearLength ?? 0.7, // Extended for smoother transitions
+      linearStart: config.linearStart ?? 0.1,
+      linearLength: config.linearLength ?? 0.7,
       linearSlope: config.linearSlope ?? 0.91,
-      exposureBias: config.exposureBias ?? 0.0, // Neutral bias for better balance
+      exposureBias: config.exposureBias ?? 0.0,
       contrast: config.contrast ?? 1.0,
-      saturation: config.saturation ?? 1.0
+      saturation: config.saturation ?? 1.0,
+      whitePoint: config.whitePoint ?? 2.0,
+      maxValueMultiplier: config.maxValueMultiplier ?? 0.8
     };
 
     // Disable default tonemapping on the environment
@@ -448,117 +450,80 @@ export class SceneBuilder {
       const float LINEAR_SLOPE = ${agxParams.linearSlope.toFixed(6)};
       const float EXPOSURE_BIAS = ${agxParams.exposureBias.toFixed(6)};
 
-      // More accurate sRGB conversion with smooth handling
+      // White point adjustment
+      const float WHITE_POINT = ${agxParams.whitePoint.toFixed(6)};
+
+      // Basic sRGB conversion
       vec3 sRGBToLinear(vec3 color) {
-          bvec3 cutoff = lessThan(color, vec3(0.04045));
-          vec3 higher = pow((color + vec3(0.055))/vec3(1.055), vec3(2.4));
-          vec3 lower = color/vec3(12.92);
-          return mix(higher, lower, cutoff);
+          return pow(color, vec3(2.2));
       }
 
-      // Improved color space conversion matrices for better hue preservation
-      const mat3 RGB_2_AP1 = mat3(
-          0.6170, 0.3400, 0.0430,
-          0.0700, 0.9300, 0.0000,
-          0.0200, 0.0880, 0.8920
-      );
-      
-      const mat3 AP1_2_RGB = mat3(
-          1.7050, -0.6242, -0.0808,
-          -0.1297, 1.1380, -0.0083,
-          -0.0241, -0.1280, 1.1520
-      );
-
-      vec3 transformColor(vec3 color) {
-          return RGB_2_AP1 * color;
+      vec3 linearToSRGB(vec3 color) {
+          return pow(color, vec3(1.0 / 2.2));
       }
 
-      vec3 inverseTransformColor(vec3 color) {
-          return AP1_2_RGB * color;
+      // Simple but accurate luminance calculation
+      float getLuminance(vec3 color) {
+          return dot(color, vec3(0.2126, 0.7152, 0.0722));
       }
 
-      // Smooth highlight compression function
-      float smoothCompress(float x, float knee, float ratio) {
-          float dist = max(0.0, x - knee);
-          return knee + dist / (1.0 + (ratio * dist / knee));
-      }
-
-      // Improved highlight desaturation with better hue preservation
-      vec3 desaturateHighlights(vec3 color) {
-          vec3 ap1 = transformColor(color);
-          float luminance = dot(ap1, vec3(0.2722287168, 0.6740817658, 0.0536895174));
-          float maxChannel = max(max(ap1.r, ap1.g), ap1.b);
-          
-          // Smoother desaturation curve
-          float desatStart = 0.7;
-          float desatEnd = 2.0;
-          float t = (maxChannel - desatStart) / (desatEnd - desatStart);
-          float desatAmount = smoothstep(0.0, 1.0, t);
-          
-          // Preserve hue while reducing saturation
-          vec3 desaturated = mix(ap1, vec3(luminance), desatAmount);
-          return inverseTransformColor(desaturated);
+      // Smooth shading helper
+      float smoothCurve(float x) {
+          return x * x * (3.0 - 2.0 * x);
       }
 
       vec3 AgXTonemap(vec3 color) {
-          // Pre-exposure adjustment for shadow detail
-          color = color * pow(2.0, EXPOSURE_BIAS);
-          color *= exposure;
+          // Apply exposure with white point adjustment
+          color *= pow(2.0, EXPOSURE_BIAS) * exposure * WHITE_POINT;
           
-          // Convert to AP1 color space for better color handling
-          color = transformColor(color);
-          
+          // Process each channel while preserving relationships
           vec3 agxColor;
           for(int i = 0; i < 3; i++) {
               float x = max(0.0, color[i]);
               
-              // Enhanced toe region with better shadow detail
               if(x < LINEAR_SECTION[0]) {
                   float t = x / LINEAR_SECTION[0];
-                  // Smoother toe curve for better shadow detail
-                  float toeStrength = mix(1.0, SLOPE, t);
-                  x = TOE * pow(t, toeStrength);
+                  t = smoothCurve(t);
+                  agxColor[i] = TOE * pow(t, SLOPE);
               }
-              // Extended linear section for smoother transitions
-              else if(x >= LINEAR_SECTION[0] && x <= LINEAR_SECTION[1]) {
+              else if(x <= LINEAR_SECTION[1]) {
                   float t = (x - LINEAR_SECTION[0]) / (LINEAR_SECTION[1] - LINEAR_SECTION[0]);
+                  t = smoothCurve(t);
                   float linearValue = LINEAR_SLOPE * (x - LINEAR_SECTION[0]) + TOE;
                   float toeValue = TOE * pow(1.0, SLOPE);
-                  x = mix(toeValue, linearValue, smoothstep(0.0, 1.0, t));
+                  agxColor[i] = mix(toeValue, linearValue, t);
               }
-              // Improved shoulder compression
               else {
-                  float t = (x - LINEAR_SECTION[1]) / (3.0 - LINEAR_SECTION[1]);
-                  // Smooth compression curve
-                  float compressed = smoothCompress(t, 0.5, 1.5);
-                  x = mix(
+                  // Adjusted shoulder for better highlight handling
+                  float t = (x - LINEAR_SECTION[1]) / (4.0 - LINEAR_SECTION[1]); // Extended range
+                  t = clamp(t, 0.0, 1.0);
+                  t = smoothCurve(t);
+                  
+                  // Modified shoulder curve for brighter whites
+                  float shoulderValue = 1.0 - pow(1.0 - t, 1.0 + SHOULDER * 0.5);
+                  
+                  // Ensure highlights can reach full white
+                  float maxValue = 1.0 + (t * ${agxParams.maxValueMultiplier.toFixed(6)});
+                  
+                  agxColor[i] = mix(
                       TOE + LINEAR_SLOPE * (LINEAR_SECTION[1] - LINEAR_SECTION[0]),
-                      1.0,
-                      compressed
+                      maxValue,
+                      shoulderValue
                   );
               }
-              
-              agxColor[i] = x;
           }
-
-          // Convert back to RGB with smooth highlight handling
-          agxColor = inverseTransformColor(agxColor);
           
-          // Apply highlight desaturation before contrast
-          agxColor = desaturateHighlights(agxColor);
-          
-          // Improved contrast application that preserves shadow detail
-          float avgLuma = dot(agxColor, vec3(0.2126, 0.7152, 0.0722));
+          // Apply contrast while preserving relationships
           vec3 contrastedColor = pow(max(agxColor, vec3(0.0001)), vec3(contrast));
-          float newLuma = dot(contrastedColor, vec3(0.2126, 0.7152, 0.0722));
-          agxColor = contrastedColor * (avgLuma / max(newLuma, 0.0001));
-
-          // Improved saturation handling that preserves shadows
-          float luma = dot(agxColor, vec3(0.2126, 0.7152, 0.0722));
-          vec3 satColor = mix(vec3(luma), agxColor, saturation);
-          float preserveShadows = 1.0 - smoothstep(0.0, 0.3, luma);
-          float preserveHighlights = 1.0 - smoothstep(0.7, 1.0, luma);
-          agxColor = mix(satColor, agxColor, max(preserveShadows, preserveHighlights));
+          float contrastLum = getLuminance(contrastedColor);
+          float originalLum = getLuminance(agxColor);
+          agxColor = contrastedColor * (originalLum / max(contrastLum, 0.0001));
+          
+          // Modified highlight desaturation to preserve bright whites
+          float lum = getLuminance(agxColor);
+          vec3 satColor = mix(vec3(lum), agxColor, saturation);
+          float desaturationAmount = smoothstep(0.8, 0.98, lum); // Adjusted threshold
+          agxColor = mix(satColor, agxColor, desaturationAmount); // Preserve original color more in highlights
           
           return clamp(agxColor, 0.0, 1.0);
       }
@@ -567,6 +532,7 @@ export class SceneBuilder {
           vec4 color = texture2D(textureSampler, vUV);
           color.rgb = sRGBToLinear(color.rgb);
           color.rgb = AgXTonemap(color.rgb);
+          color.rgb = linearToSRGB(color.rgb);
           gl_FragColor = color;
       }`;
 
