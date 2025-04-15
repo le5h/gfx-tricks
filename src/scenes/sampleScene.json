@@ -5,45 +5,23 @@
     "antialiasing": true,
     "imageProcessing": {
       "contrast": 1.0,
-      "exposure": 0.5,
+      "exposure": 1.0,
       "toneMapping": true,
       "agx": {
         "enabled": true,
-        "slope": 1.0,
-        "toe": 0.5,
-        "shoulder": 0.5,
-        "linearStart": 0.1,
-        "linearLength": 0.6,
-        "linearSlope": 1.0,
-        "exposureBias": 0.0,
-        "whitePoint": 1.0,
-        "maxValueMultiplier": 1.0,
-        "contrast": 1.0,
+        "slope": 2.2,
+        "contrast": 1.1,
         "saturation": 1.0,
-        "blackPoint": 0.0,
-        "blackTransitionStart": 0.0,
-        "blackTransitionEnd": 0.02,
-        "shadowStart": 0.0,
-        "shadowEnd": 0.3,
-        "shadowContrastFactor": 1.0,
-        "shadowSaturationFactor": 1.0
+        "exposureBias": 0.0
       }
     },
     "shadows": {
       "enabled": true
     },
-    "environment": {
-      "skybox": "https://playground.babylonjs.com/textures/TropicalSunnyDay"
-    },
     "materials": {
       "usePhysicalLights": true,
       "useSpecularOverAlpha": true,
-      "useLogarithmicDepth": true,
-      "specularEnvironment": {
-        "enabled": true,
-        "texture": "https://playground.babylonjs.com/textures/TropicalSunnyDay",
-        "coordinatesMode": "SKYBOX_MODE"
-      }
+      "useLogarithmicDepth": true
     }
   },
   "postProcesses": [
@@ -66,102 +44,217 @@
   "camera": {
     "type": "arcRotate",
     "name": "mainCamera",
-    "alpha": -1.5708,
-    "beta": 1.2566,
-    "radius": 15,
-    "target": [0, 0, 0]
+    "alpha": -0.5,
+    "beta": 1.2,
+    "radius": 12,
+    "target": [0, 2, 0],
+    "comment": "Camera positioned to view inside the Cornell box from an angle"
   },
   "lights": [
     {
       "type": "hemispheric",
-      "name": "hemiLight",
+      "name": "envLight",
       "direction": [0, 1, 0],
-      "intensity": 0.8,
-      "diffuse": [0.6, 0.6, 0.7],
-      "groundColor": [0.01, 0.01, 0.01],
-      "specular": [0.1, 0.1, 0.15]
+      "intensity": 0.1,
+      "diffuse": [0.8, 0.8, 0.9],
+      "groundColor": [0.1, 0.1, 0.2],
+      "specular": [0.2, 0.2, 0.3],
+      "comment": "Ambient light to ensure scene visibility"
     },
     {
-      "type": "directional",
-      "name": "shadowLight",
-      "direction": [-1, -2, 1],
-      "position": [10, 10, -10],
-      "intensity": 0.8,
+      "type": "point",
+      "name": "ceilingLight",
+      "position": [0, 6, 0],
+      "intensity": 1.0,
+      "diffuse": [1.0, 1.0, 1.0],
+      "specular": [1.0, 1.0, 1.0],
+      "range": 15,
       "shadows": {
         "enabled": true,
         "quality": "high",
-        "mapSize": 2048,
-        "bias": 0.0001,
-        "normalBias": 0.005
-      }
+        "mapSize": 2048
+      },
+      "comment": "Main light source positioned near the ceiling"
     }
   ],
   "materials": [
     {
-      "name": "redMaterial",
-      "diffuseColor": [1, 0, 0],
-      "specularColor": [0.6, 0.6, 0.6],
-      "specularPower": 128,
+      "name": "whiteMaterial",
+      "diffuseColor": [0.9, 0.9, 0.9],
+      "specularColor": [0.3, 0.3, 0.3],
+      "specularPower": 32,
       "usePhysicalLights": true,
-      "useSpecularOverAlpha": true,
-      "useLogarithmicDepth": true
+      "comment": "White material for floor, ceiling, and back wall"
+    },
+    {
+      "name": "redMaterial",
+      "diffuseColor": [0.9, 0.2, 0.2],
+      "specularColor": [0.3, 0.3, 0.3],
+      "specularPower": 32,
+      "usePhysicalLights": true,
+      "comment": "Red material for the left wall"
+    },
+    {
+      "name": "greenMaterial",
+      "diffuseColor": [0.2, 0.9, 0.2],
+      "specularColor": [0.3, 0.3, 0.3],
+      "specularPower": 32,
+      "usePhysicalLights": true,
+      "comment": "Green material for the right wall"
     },
     {
       "name": "blueMaterial",
-      "diffuseColor": [0, 0, 1],
-      "specularColor": [0.6, 0.6, 0.6],
-      "specularPower": 128,
-      "usePhysicalLights": true,
-      "useSpecularOverAlpha": true,
-      "useLogarithmicDepth": true
+      "diffuseColor": [0.2, 0.2, 0.8],
+      "specularColor": [0.2, 0.2, 0.2],
+      "specularPower": 32,
+      "usePhysicalLights": true
     },
     {
-      "name": "groundMaterial",
-      "diffuseColor": [0.2, 0.2, 0.2],
-      "specularColor": [0.3, 0.3, 0.3],
+      "name": "testObjectMaterial",
+      "diffuseColor": [0.9, 0.9, 0.9],
+      "specularColor": [0.5, 0.5, 0.5],
       "specularPower": 64,
       "usePhysicalLights": true,
-      "useSpecularOverAlpha": true,
-      "useLogarithmicDepth": true
+      "comment": "Material for the test sphere with higher specular power"
     }
   ],
   "meshes": [
     {
-      "type": "sphere",
-      "name": "redSphere",
-      "diameter": 2,
-      "position": [-2, 1, 0],
-      "material": "redMaterial",
-      "segments": 32,
+      "type": "box",
+      "name": "floor",
+      "width": 10,
+      "height": 0.2,
+      "depth": 10,
+      "position": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "material": "whiteMaterial",
       "shadows": {
         "enabled": true,
-        "receiveShadows": true,
-        "dropShadow": true
-      }
+        "receiveShadows": true
+      },
+      "comment": "Floor of the Cornell box, thin but wide"
     },
     {
       "type": "box",
-      "name": "blueBox",
-      "size": 2,
-      "position": [2, 1, 0],
-      "material": "blueMaterial",
+      "name": "ceilingFrameTop",
+      "width": 10,
+      "height": 1,
+      "depth": 4,
+      "position": [0, 5.5, 3],
+      "rotation": [0, 0, 0],
+      "material": "whiteMaterial",
       "shadows": {
         "enabled": true,
         "receiveShadows": true,
         "dropShadow": true
-      }
+      },
+      "comment": "Top edge of ceiling frame"
     },
     {
-      "type": "ground",
-      "name": "ground",
-      "width": 20,
-      "height": 20,
-      "material": "groundMaterial",
+      "type": "box",
+      "name": "ceilingFrameBottom",
+      "width": 10,
+      "height": 1,
+      "depth": 4,
+      "position": [0, 5.5, -3],
+      "rotation": [0, 0, 0],
+      "material": "whiteMaterial",
       "shadows": {
         "enabled": true,
         "receiveShadows": true,
-        "dropShadow": false
-      }
+        "dropShadow": true
+      },
+      "comment": "Bottom edge of ceiling frame"
+    },
+    {
+      "type": "box",
+      "name": "ceilingFrameLeft",
+      "width": 4,
+      "height": 1,
+      "depth": 2.5,
+      "position": [-3, 5.5, 0],
+      "rotation": [0, 0, 0],
+      "material": "whiteMaterial",
+      "shadows": {
+        "enabled": true,
+        "receiveShadows": true,
+        "dropShadow": true
+      },
+      "comment": "Left edge of ceiling frame"
+    },
+    {
+      "type": "box",
+      "name": "ceilingFrameRight",
+      "width": 4,
+      "height": 1,
+      "depth": 2.5,
+      "position": [3, 5.5, 0],
+      "rotation": [0, 0, 0],
+      "material": "whiteMaterial",
+      "shadows": {
+        "enabled": true,
+        "receiveShadows": true,
+        "dropShadow": true
+      },
+      "comment": "Right edge of ceiling frame"
+    },
+    {
+      "type": "box",
+      "name": "backWall",
+      "width": 10,
+      "height": 5,
+      "depth": 0.2,
+      "position": [0, 2.5, -5],
+      "rotation": [0, 0, 0],
+      "material": "whiteMaterial",
+      "shadows": {
+        "enabled": true,
+        "receiveShadows": true
+      },
+      "comment": "Back wall of the Cornell box, tall and wide but thin"
+    },
+    {
+      "type": "box",
+      "name": "leftWall",
+      "width": 0.2,
+      "height": 5,
+      "depth": 10,
+      "position": [-5, 2.5, 0],
+      "rotation": [0, 0, 0],
+      "material": "redMaterial",
+      "shadows": {
+        "enabled": true,
+        "receiveShadows": true
+      },
+      "comment": "Left wall of the Cornell box, tall and deep but thin"
+    },
+    {
+      "type": "box",
+      "name": "rightWall",
+      "width": 0.2,
+      "height": 5,
+      "depth": 10,
+      "position": [5, 2.5, 0],
+      "rotation": [0, 0, 0],
+      "material": "greenMaterial",
+      "shadows": {
+        "enabled": true,
+        "receiveShadows": true
+      },
+      "comment": "Right wall of the Cornell box, tall and deep but thin"
+    },
+    {
+      "type": "sphere",
+      "name": "testSphere",
+      "diameter": 1.5,
+      "position": [0, 1.5, 0],
+      "material": "testObjectMaterial",
+      "shadows": {
+        "enabled": true,
+        "receiveShadows": true,
+        "dropShadow": true
+      },
+      "comment": "Test sphere in the center of the Cornell box"
     }
   ]
 } 

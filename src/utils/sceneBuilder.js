@@ -335,7 +335,11 @@ export class SceneBuilder {
       case 'box':
         mesh = BABYLON.MeshBuilder.CreateBox(
           config.name,
-          { size: config.size || 1 },
+          {
+            width: config.width || 1,
+            height: config.height || 1,
+            depth: config.depth || 1
+          },
           scene
         );
         break;
