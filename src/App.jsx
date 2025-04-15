@@ -1,5 +1,11 @@
 import { useEffect, useRef } from 'preact/hooks';
-import * as BABYLON from 'babylonjs';
+import * as BABYLON from '@babylonjs/core';
+
+import { SceneBuilder } from './utils/sceneBuilder';
+
+import sampleScene from './scenes/sampleScene.json';
+
+
 
 export default function App() {
   const canvasRef = useRef(null);
@@ -10,34 +16,9 @@ export default function App() {
     // Create the Babylon.js engine
     const engine = new BABYLON.Engine(canvasRef.current, true);
 
-    // Create a basic scene
-    const scene = new BABYLON.Scene(engine);
-    scene.clearColor = new BABYLON.Color4(0, 0, 0, 1);
-
-    // Create a camera
-    const camera = new BABYLON.ArcRotateCamera(
-      "camera",
-      -Math.PI / 2,
-      Math.PI / 2.5,
-      3,
-      new BABYLON.Vector3(0, 0, 0),
-      scene
-    );
-    camera.attachControl(canvasRef.current, true);
-
-    // Create a light
-    const light = new BABYLON.HemisphericLight(
-      "light",
-      new BABYLON.Vector3(0, 1, 0),
-      scene
-    );
-
-    // Create a sphere
-    const sphere = BABYLON.MeshBuilder.CreateSphere(
-      "sphere",
-      { diameter: 2 },
-      scene
-    );
+    // Create scene builder and build the scene
+    const sceneBuilder = new SceneBuilder(engine, canvasRef.current);
+    const scene = sceneBuilder.buildFromConfig(sampleScene);
 
     // Run the render loop
     engine.runRenderLoop(() => {

@@ -1,0 +1,132 @@
+{
+  "clearColor": [0.1, 0.1, 0.1, 1],
+  "rendering": {
+    "hdr": true,
+    "antialiasing": true,
+    "imageProcessing": {
+      "contrast": 1.0,
+      "exposure": 1.0,
+      "toneMapping": true,
+      "agx": {
+        "enabled": true,
+        "slope": 0.88,
+        "toe": 0.55,
+        "shoulder": 1.0,
+        "linearStart": 0.15,
+        "linearLength": 0.5,
+        "linearSlope": 0.88,
+        "exposureBias": -0.75,
+        "contrast": 1.0,
+        "saturation": 1.0
+      }
+    },
+    "shadows": {
+      "enabled": true
+    },
+    "environment": {
+      "skybox": "https://playground.babylonjs.com/textures/TropicalSunnyDay"
+    }
+  },
+  "postProcesses": [
+    {
+      "type": "bloom",
+      "size": 10,
+      "intensity": 1.0,
+      "threshold": 0.0
+    },
+    {
+      "type": "glow",
+      "mainTextureFixedSize": 1024,
+      "blurKernelSize": 32
+    },
+    {
+      "type": "ssao",
+      "ratio": 1.0
+    }
+  ],
+  "camera": {
+    "type": "arcRotate",
+    "name": "mainCamera",
+    "alpha": -1.5708,
+    "beta": 1.2566,
+    "radius": 15,
+    "target": [0, 0, 0]
+  },
+  "lights": [
+    {
+      "type": "hemispheric",
+      "name": "hemiLight",
+      "direction": [0, 1, 0],
+      "intensity": 0.3
+    },
+    {
+      "type": "directional",
+      "name": "shadowLight",
+      "direction": [-1, -2, 1],
+      "position": [10, 10, -10],
+      "intensity": 1.0,
+      "shadows": {
+        "enabled": true,
+        "quality": "high",
+        "mapSize": 2048,
+        "bias": 0.0001,
+        "normalBias": 0.005
+      }
+    }
+  ],
+  "materials": [
+    {
+      "name": "redMaterial",
+      "diffuseColor": [1, 0, 0],
+      "specularColor": [1, 1, 1]
+    },
+    {
+      "name": "blueMaterial",
+      "diffuseColor": [0, 0, 1],
+      "specularColor": [1, 1, 1]
+    },
+    {
+      "name": "groundMaterial",
+      "diffuseColor": [0.2, 0.2, 0.2],
+      "specularColor": [0.5, 0.5, 0.5]
+    }
+  ],
+  "meshes": [
+    {
+      "type": "sphere",
+      "name": "redSphere",
+      "diameter": 2,
+      "position": [-2, 1, 0],
+      "material": "redMaterial",
+      "shadows": {
+        "enabled": true,
+        "receiveShadows": true,
+        "dropShadow": true
+      }
+    },
+    {
+      "type": "box",
+      "name": "blueBox",
+      "size": 2,
+      "position": [2, 1, 0],
+      "material": "blueMaterial",
+      "shadows": {
+        "enabled": true,
+        "receiveShadows": true,
+        "dropShadow": true
+      }
+    },
+    {
+      "type": "ground",
+      "name": "ground",
+      "width": 20,
+      "height": 20,
+      "material": "groundMaterial",
+      "shadows": {
+        "enabled": true,
+        "receiveShadows": true,
+        "dropShadow": false
+      }
+    }
+  ]
+} 
