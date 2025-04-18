@@ -1,14 +1,10 @@
 import * as BABYLON from '@babylonjs/core';
 import { createAgXTonemap } from './agxTonemap';
+import { DynamicReflections } from './CustomComponent';
 
-// AgX tonemapping constants
-const AGX_CONSTANTS = {
-    SLOPE: 0.98,
-    TOE: 0.55,
-    SHOULDER: 0.0,
-    LINEAR_SECTION: [0.18, 0.18],
-    LINEAR_SLOPE: 0.98,
-    EXPOSURE_BIAS: 0.0
+// Custom behavior registry
+const BehaviorRegistry = {
+  DynamicReflections
 };
 
 export class SceneBuilder {
@@ -402,6 +398,13 @@ export class SceneBuilder {
           scene
         );
         break;
+      
+        case 'plane':
+            mesh = BABYLON.MeshBuilder.CreateGround(config.name, {
+                width: config.width,
+                height: config.height
+            }, scene);
+            break;
 
       default:
         throw new Error(`Unsupported mesh type: ${config.type}`);
@@ -420,6 +423,17 @@ export class SceneBuilder {
     // Apply material if specified
     if (config.material) {
       mesh.material = scene.getMaterialByName(config.material);
+    }
+
+    // Attach components if specified
+    if (config.components) {
+      config.components.forEach(componentConfig => {
+        if (componentConfig.type && BehaviorRegistry[componentConfig.type]) {
+          console.log(`Attaching component: ${componentConfig.type} to mesh: ${mesh.name}`);
+          const Component = BehaviorRegistry[componentConfig.type];
+          Component.AddToMesh(mesh, componentConfig.properties);
+        }
+      });
     }
 
     // Configure shadows if enabled
@@ -447,8 +461,33 @@ export class SceneBuilder {
   }
 
   createMaterial(scene, config) {
-    const material = new BABYLON.StandardMaterial(config.name, scene);
+    let material;
+
+    // Check the type of material to create
+    switch (config.type) {
+      case 'pbr':
+        material = new BABYLON.PBRMaterial(config.name, scene);
+        material.metallic = config.metallic || 0;
+        material.roughness = config.roughness || 1;
+        if (config.reflectionTexture) {
+          material.reflectionTexture = new BABYLON.CubeTexture(config.reflectionTexture.url, scene);
+        }
+        break;
+      
+      case 'standard': default:
+        material = new BABYLON.StandardMaterial(config.name, scene);
+        if (config.reflectionTexture) {
+          material.reflectionTexture = new BABYLON.CubeTexture(config.reflectionTexture.url, scene);
+          material.reflectionTexture.coordinatesMode = BABYLON.Texture.CUBIC_MODE;
+        }
+        break;
+    }
     
+    
+    if (!config.transparent) {
+      material.backFaceCulling = true;
+    }
+
     // Set diffuse color with HDR support
     if (config.diffuseColor) {
       material.diffuseColor = new BABYLON.Color3(...config.diffuseColor);
@@ -462,27 +501,6 @@ export class SceneBuilder {
     // Set specular power for smoother highlights
     if (config.specularPower) {
       material.specularPower = config.specularPower;
-    }
-
-    // Apply material settings from scene configuration
-    const materialConfig = this.sceneConfig.rendering?.materials || {};
-    
-    // Enable physical lights if configured
-    material.usePhysicalLights = config.usePhysicalLights ?? materialConfig.usePhysicalLights ?? true;
-    
-    // Enable specular anti-aliasing if configured
-    material.useSpecularOverAlpha = config.useSpecularOverAlpha ?? materialConfig.useSpecularOverAlpha ?? true;
-    material.useLogarithmicDepth = config.useLogarithmicDepth ?? materialConfig.useLogarithmicDepth ?? true;
-
-    // Configure specular environment if enabled
-    if (materialConfig.specularEnvironment?.enabled) {
-      material.useSpecularOverAlpha = true;
-      material.specularEnvironmentTexture = new BABYLON.CubeTexture(
-        materialConfig.specularEnvironment.texture,
-        scene
-      );
-      material.specularEnvironmentTexture.coordinatesMode = 
-        BABYLON.Texture[materialConfig.specularEnvironment.coordinatesMode];
     }
 
     return material;

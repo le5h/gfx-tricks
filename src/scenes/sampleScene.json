@@ -20,11 +20,6 @@
       "bias": 0.0001,
       "normalBias": 0.0,
       "filter": "pcf"
-    },
-    "materials": {
-      "usePhysicalLights": true,
-      "useSpecularOverAlpha": true,
-      "useLogarithmicDepth": true
     }
   },
   "postProcesses": [
@@ -43,18 +38,18 @@
     },
     {
       "type": "ssao",
-      "enabled": true,
+      "enabled": false,
       "ratio": 1.0
     }
   ],
   "camera": {
     "type": "arcRotate",
     "name": "mainCamera",
-    "alpha": -0.5,
-    "beta": 1.2,
-    "radius": 12,
-    "target": [0, 2, 0],
-    "comment": "Camera positioned to view inside the Cornell box from an angle"
+    "alpha": 1.57,
+    "beta":  1.57,
+    "radius": 15,
+    "target": [0, 2.5, 0],
+    "comment": "Camera positioned to look straight down at the center of the Cornell box"
   },
   "lights": [
     {
@@ -125,6 +120,38 @@
       "specularPower": 64,
       "usePhysicalLights": true,
       "comment": "Material for the test sphere with higher specular power"
+    },
+    {
+      "name": "reflectiveMaterial",
+      "diffuseColor": [0.9, 0.9, 0.9],
+      "specularColor": [1.0, 1.0, 1.0],
+      "specularPower": 64,
+      "usePhysicalLights": true,
+      "reflectionTexture": {
+        "url": "textures/skybox"
+      },
+      "comment": "Reflective material for the test sphere"
+    },
+    {
+      "name": "debugMaterial",
+      "diffuseColor": [1.0, 1.0, 1.0],
+      "specularColor": [0.0, 0.0, 0.0],
+      "reflectionTexture": {
+        "url": "textures/skybox"
+      },
+      "usePhysicalLights": true,
+      "comment": "Material for the debug plane to display the cubemap texture"
+    },
+    {
+      "name": "newPBRMaterial",
+      "type": "pbr",
+      "diffuseColor": [0.5, 0.5, 0.5],
+      "specularColor": [0.2, 0.2, 0.2],
+      "metallic": 0.2,
+      "roughness": 0.2,
+      "specularPower": 64,
+      "usePhysicalLights": true,
+      "comment": "A new PBR material for advanced rendering"
     }
   ],
   "meshes": [
@@ -157,7 +184,7 @@
         "receiveShadows": true,
         "dropShadow": true
       },
-      "comment": "Top edge of ceiling frame"
+      "comment": "Ceiling with hole, top edge of frame"
     },
     {
       "type": "box",
@@ -173,7 +200,7 @@
         "receiveShadows": true,
         "dropShadow": true
       },
-      "comment": "Bottom edge of ceiling frame"
+      "comment": "Ceiling with hole, bottom edge of frame"
     },
     {
       "type": "box",
@@ -189,7 +216,7 @@
         "receiveShadows": true,
         "dropShadow": true
       },
-      "comment": "Left edge of ceiling frame"
+      "comment": "Ceiling with hole, left edge of frame"
     },
     {
       "type": "box",
@@ -205,7 +232,7 @@
         "receiveShadows": true,
         "dropShadow": true
       },
-      "comment": "Right edge of ceiling frame"
+      "comment": "Ceiling with hole, right edge of frame"
     },
     {
       "type": "box",
@@ -220,7 +247,7 @@
         "enabled": true,
         "receiveShadows": true
       },
-      "comment": "Back wall of the Cornell box, tall and wide but thin"
+      "comment": "Back wall of the Cornell box"
     },
     {
       "type": "box",
@@ -235,7 +262,7 @@
         "enabled": true,
         "receiveShadows": true
       },
-      "comment": "Left wall of the Cornell box, tall and deep but thin"
+      "comment": "Left wall of the Cornell box"
     },
     {
       "type": "box",
@@ -250,20 +277,87 @@
         "enabled": true,
         "receiveShadows": true
       },
-      "comment": "Right wall of the Cornell box, tall and deep but thin"
+      "comment": "Right wall of the Cornell box"
     },
     {
       "type": "sphere",
       "name": "testSphere",
       "diameter": 1.5,
       "position": [0, 1.5, 0],
-      "material": "testObjectMaterial",
+      "material": "reflectiveMaterial",
       "shadows": {
         "enabled": true,
         "receiveShadows": true,
         "dropShadow": true
       },
+      "components": [
+        {
+          "type": "DynamicReflections",
+          "properties": {}
+        }
+      ],
       "comment": "Test sphere in the center of the Cornell box"
+    },
+    {
+      "type": "sphere",
+      "name": "testSpherePbr",
+      "diameter": 1.5,
+      "position": [-3, 1, -3],
+      "material": "newPBRMaterial",
+      "shadows": {
+        "enabled": true,
+        "receiveShadows": true,
+        "dropShadow": true
+      },
+      "components": [
+        {
+          "type": "DynamicReflections",
+          "properties": { "cubemapSize": 32 }
+        }
+      ],
+      "comment": "Test sphere with PBR material in the corner of the Cornell box"
+    },
+    {
+      "type": "box",
+      "name": "testBox1",
+      "width": 1,
+      "height": 1,
+      "depth": 1,
+      "position": [1, 0.5, -2],
+      "material": "blueMaterial",
+      "shadows": {
+        "enabled": true,
+        "receiveShadows": true
+      },
+      "comment": "A test box in the scene"
+    },
+    {
+      "type": "box",
+      "name": "testBox2",
+      "width": 1,
+      "height": 1,
+      "depth": 1,
+      "position": [-1, 0.5, -2],
+      "material": "greenMaterial",
+      "shadows": {
+        "enabled": true,
+        "receiveShadows": true
+      },
+      "comment": "Another test box in the scene"
+    },
+    {
+      "type": "plane",
+      "name": "debugPlane",
+      "width": 5,
+      "height": 5,
+      "position": [0, 2.5, -4],
+      "rotation": [1.57, 0, 0],
+      "material": "debugMaterial",
+      "comment": "Debug plane to show the rendered cubemap texture",
+      "shadows": {
+        "enabled": true,
+        "receiveShadows": true
+      }
     }
   ]
-} 
+}

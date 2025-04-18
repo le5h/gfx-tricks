@@ -1,5 +1,15 @@
 import * as BABYLON from '@babylonjs/core';
 
+// AgX tonemapping constants
+const AGX_CONSTANTS = {
+    SLOPE: 0.98,
+    TOE: 0.55,
+    SHOULDER: 0.0,
+    LINEAR_SECTION: [0.18, 0.18],
+    LINEAR_SLOPE: 0.98,
+    EXPOSURE_BIAS: 0.0
+};
+
 export const createAgXTonemap = (scene, config = {}, pipeline) => {
     const shaderName = "agx";
     
